@@ -19,7 +19,7 @@ prefs = JSONConfig('plugins/interface_demo')
 
 # Set defaults
 prefs.defaults['server_ip_addr'] = '192.168.0.1'
-prefs.defaults['server_port'] = '8080'
+# prefs.defaults['server_port'] = '8080'
 
 
 class ConfigWidget(QWidget):
@@ -37,14 +37,14 @@ class ConfigWidget(QWidget):
         self.popup.addWidget(self.ip_edit)
         self.ip_label.setBuddy(self.ip_edit)
 
-        self.port_label = QLabel('设备端口号: ')
-        self.popup.addWidget(self.port_label)
-
-        self.port_edit = QLineEdit(self)
-        self.port_edit.setText(prefs['server_port'])
-        self.popup.addWidget(self.port_edit)
-        self.port_label.setBuddy(self.port_edit)
+        # self.port_label = QLabel('设备端口号: ')
+        # self.popup.addWidget(self.port_label)
+        #
+        # self.port_edit = QLineEdit(self)
+        # self.port_edit.setText(prefs['server_port'])
+        # self.popup.addWidget(self.port_edit)
+        # self.port_label.setBuddy(self.port_edit)
 
     def save_settings(self):
         prefs['server_ip_addr'] = self.ip_edit.text()
-        prefs['server_port'] = self.port_edit.text()
+        # prefs['server_port'] = self.port_edit.text()
