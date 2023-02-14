@@ -32,10 +32,6 @@ def is_valid_ipv4(ip_address):
         return False
 
 
-def is_valid_port(port_str):
-    return 65535 > int(port_str) > 1023
-
-
 class DemoDialog(QDialog):
 
     def __init__(self, gui, icon, do_user_config):
@@ -68,20 +64,10 @@ class DemoDialog(QDialog):
         self.about_button.clicked.connect(self.export)
         self.l.addWidget(self.about_button)
 
-        self.marked_button = QPushButton(
-            'Show books with only one format in the calibre GUI', self)
-        self.marked_button.clicked.connect(self.marked)
-        self.l.addWidget(self.marked_button)
-
         self.view_button = QPushButton(
             '帮助', self)
         self.view_button.clicked.connect(self.xmnote_help)
         self.l.addWidget(self.view_button)
-
-        self.update_metadata_button = QPushButton(
-            'Update metadata in a book\'s files', self)
-        self.update_metadata_button.clicked.connect(self.update_metadata)
-        self.l.addWidget(self.update_metadata_button)
 
         self.resize(self.sizeHint())
 
@@ -97,13 +83,7 @@ class DemoDialog(QDialog):
         # are not found in the zip file will not be in the returned dictionary.
         import dateutil.parser as dp
         from calibre.ebooks.metadata import authors_to_string
-        text = get_resources('about.txt')
-        QMessageBox.about(self, 'About the Interface Plugin Demo',
-                          text.decode('utf-8'))
         rows = self.gui.library_view.selectionModel().selectedRows()
-        if not rows or len(rows) == 0:
-            return error_dialog(self.gui, 'Cannot update metadata',
-                                'No books selected', show=True)
         # Map the rows to book ids
         selected_book_ids = list(map(self.gui.library_view.model().id, rows))
         db = self.db.new_api
@@ -139,7 +119,7 @@ class DemoDialog(QDialog):
                 if 'toc_family_titles' in anno and len(anno['toc_family_titles']) > 0:
                     entry['chapter'] = ' > '.join(anno['toc_family_titles'])
                 entry['time'] = timestamp
-                info_dialog(self, 'Highlight', str(i), show=True)
+                print(str(i))
                 body['entries'].append(entry)
 
             url = 'http://%s:8080/send' % prefs['server_ip_addr']
@@ -160,36 +140,8 @@ class DemoDialog(QDialog):
                 print(json.loads(resp.read()))
             except URLError:
                 return error_dialog(self.gui, '请求发送失败',
-                                    '可能原因:\n• 目标设备IP地址错误\n• 目标设备未进入API导入界面', show=True, show_copy_button=False)
-
-
-    def marked(self):
-        ''' Show books with only one format '''
-        db = self.db.new_api
-        matched_ids = {book_id for book_id in db.all_book_ids() if len(db.formats(book_id)) == 1}
-        # Mark the records with the matching ids
-        # new_api does not know anything about marked books, so we use the full
-        # db object
-        self.db.set_marked_ids(matched_ids)
-
-        # Tell the GUI to search for all marked records
-        self.gui.search.setEditText('marked:true')
-        self.gui.search.do_search()
-
-    def view(self):
-        ''' View the most recently added book '''
-        most_recent = most_recent_id = None
-        db = self.db.new_api
-        for book_id, timestamp in db.all_field_for('timestamp', db.all_book_ids()).items():
-            if most_recent is None or timestamp > most_recent:
-                most_recent = timestamp
-                most_recent_id = book_id
-
-        if most_recent_id is not None:
-            # Get a reference to the View plugin
-            view_plugin = self.gui.iactions['View']
-            # Ask the view plugin to launch the viewer for row_number
-            view_plugin._view_calibre_books([most_recent_id])
+                                    '可能原因:\n• 目标设备IP地址错误\n• 目标设备未进入API导入界面', show=True,
+                                    show_copy_button=False)
 
     def xmnote_help(self):
         return info_dialog(self, '帮助',
@@ -200,44 +152,6 @@ class DemoDialog(QDialog):
                            show=True,
                            show_copy_button=False
                            )
-
-    def update_metadata(self):
-        '''
-        Set the metadata in the files in the selected book's record to
-        match the current metadata in the database.
-        '''
-        def export_highlight(self):
-            confirm = QMessageBox()
-            confirm.setText(
-                "Are you sure you want to send ALL highlights of the selected books to XMNOTE? This cannot be undone.")
-            confirm.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-            confirm.setIcon(QMessageBox.Question)
-            confirmed = confirm.exec()
-            print(filter(lambda a: a.get("annotation", {}).get("type") == "highlight",
-                         self.gui.current_db.new_api.all_annotations()))
-            if confirmed != QMessageBox.Yes:
-                return
-
-        # Get currently selected books
-        rows = self.gui.library_view.selectionModel().selectedRows()
-        if not rows or len(rows) == 0:
-            return error_dialog(self.gui, 'Cannot update metadata',
-                                'No books selected', show=True)
-        # Map the rows to book ids
-        ids = list(map(self.gui.library_view.model().id, rows))
-        info_dialog(self, 'Selected count', str(len(ids)), show=True)
-        db = self.db.new_api
-        for book_id in ids:
-            # Get the current metadata for this book from the db
-            mi = db.get_metadata(book_id, get_cover=True, cover_as_data=True)
-            fmts = db.formats(book_id)
-            print('book_id: ', book_id)
-            print('mi: ', mi)
-            print('fmts: ', fmts)
-
-        info_dialog(self, 'Updated files',
-                    'Updated the metadata in the files of %d book(s)' % len(ids),
-                    show=True)
 
     def get_formatted_label(self):
         res = '目标设备IP:\n' + prefs['server_ip_addr'] + '\n\n'
@@ -253,7 +167,7 @@ class DemoDialog(QDialog):
             print('book_id: ', book_id)
             print('mi: ', mi)
             print('fmts: ', fmts)
-            res += mi.title + '\n'
+            res += '• ' + mi.title + '\n'
         return res + '\n'
 
     def config(self):
@@ -263,10 +177,10 @@ class DemoDialog(QDialog):
         if not is_valid_ipv4(prefs['server_ip_addr']):
             return error_dialog(self.gui, 'IP地址无效',
                                 'IP地址无效', show=True)
-        try:
-            if not is_valid_port(prefs['server_port']):
-                return error_dialog(self.gui, '端口无效',
-                                    '端口为一个1024 ~ 65535的整数', show=True)
-        except ValueError:
-            return error_dialog(self.gui, '端口格式错误',
-                                '端口为一个1024 ~ 65535的整数', show=True)
+        # try:
+        #     if not is_valid_port(prefs['server_port']):
+        #         return error_dialog(self.gui, '端口无效',
+        #                             '端口为一个1024 ~ 65535的整数', show=True)
+        # except ValueError:
+        #     return error_dialog(self.gui, '端口格式错误',
+        #                         '端口为一个1024 ~ 65535的整数', show=True)
