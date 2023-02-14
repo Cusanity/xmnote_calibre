@@ -6,7 +6,11 @@ __license__ = 'GPL v3'
 __copyright__ = '2023, Cusanity <wyc935398521@gmail.com>'
 __docformat__ = 'restructuredtext en'
 
+import json
 import re
+import mechanize
+
+from calibre.gui2 import error_dialog, info_dialog
 
 if False:
     # This is here to keep my python error checker from complaining about
@@ -55,8 +59,13 @@ class DemoDialog(QDialog):
         self.setWindowTitle('纸间书摘')
         self.setWindowIcon(icon)
 
-        self.about_button = QPushButton('About', self)
-        self.about_button.clicked.connect(self.about)
+        self.conf_button = QPushButton(
+            '设置目标设备的IP', self)
+        self.conf_button.clicked.connect(self.config)
+        self.l.addWidget(self.conf_button)
+
+        self.about_button = QPushButton('导出到纸间书摘', self)
+        self.about_button.clicked.connect(self.export)
         self.l.addWidget(self.about_button)
 
         self.marked_button = QPushButton(
@@ -65,8 +74,8 @@ class DemoDialog(QDialog):
         self.l.addWidget(self.marked_button)
 
         self.view_button = QPushButton(
-            'View the most recently added book', self)
-        self.view_button.clicked.connect(self.view)
+            '帮助', self)
+        self.view_button.clicked.connect(self.xmnote_help)
         self.l.addWidget(self.view_button)
 
         self.update_metadata_button = QPushButton(
@@ -74,14 +83,9 @@ class DemoDialog(QDialog):
         self.update_metadata_button.clicked.connect(self.update_metadata)
         self.l.addWidget(self.update_metadata_button)
 
-        self.conf_button = QPushButton(
-            'Configure this plugin', self)
-        self.conf_button.clicked.connect(self.config)
-        self.l.addWidget(self.conf_button)
-
         self.resize(self.sizeHint())
 
-    def about(self):
+    def export(self):
         # Get the about text from a file inside the plugin zip file
         # The get_resources function is a builtin function defined for all your
         # plugin code. It loads files from the plugin zip file. It returns
@@ -91,7 +95,8 @@ class DemoDialog(QDialog):
         # should pass a list of names to get_resources. In this case,
         # get_resources will return a dictionary mapping names to bytes. Names that
         # are not found in the zip file will not be in the returned dictionary.
-        from calibre.gui2 import error_dialog, info_dialog
+        import dateutil.parser as dp
+        from calibre.ebooks.metadata import authors_to_string
         text = get_resources('about.txt')
         QMessageBox.about(self, 'About the Interface Plugin Demo',
                           text.decode('utf-8'))
@@ -101,13 +106,62 @@ class DemoDialog(QDialog):
                                 'No books selected', show=True)
         # Map the rows to book ids
         selected_book_ids = list(map(self.gui.library_view.model().id, rows))
-        # print(ids)
-        info_dialog(self, 'Selected count', str(len(selected_book_ids)), show=True)
-        filtered_list = filter(lambda a: a.get('book_id', {}) in selected_book_ids,
-                               self.gui.current_db.new_api.all_annotations())
-        for i in filtered_list:
-            print(i)
-        print(114515)
+        db = self.db.new_api
+        for book_id in selected_book_ids:
+            # Get the current metadata for this book from the db
+            mi = db.get_metadata(book_id, get_cover=True, cover_as_data=True)
+            fmts = db.formats(book_id)
+            filtered_list = self.gui.current_db.new_api.all_annotations_for_book(book_id)
+            body = {'title': mi.title,
+                    'author': authors_to_string(mi.authors),
+                    'publisher': mi.publisher,
+                    'publishDate': int(dp.parse(str(mi.pubdate)).timestamp()),
+                    'type': 1,
+                    'locationUnit': 1,
+                    'entries': []
+                    }
+            if mi.isbn:
+                body['isbn'] = mi.isbn
+
+            print('book_id: ', book_id)
+            print('mi: ', mi)
+            print('fmts: ', fmts)
+            for i in filtered_list:
+                anno = i['annotation']
+                if 'removed' in anno and anno['removed'] is True:
+                    continue
+                timestamp_str = str(anno['timestamp'])
+                timestamp = int(dp.parse(timestamp_str).timestamp())
+
+                entry = {'text': anno['highlighted_text']}
+                if 'notes' in anno:
+                    entry['note'] = anno['notes']
+                if 'toc_family_titles' in anno and len(anno['toc_family_titles']) > 0:
+                    entry['chapter'] = ' > '.join(anno['toc_family_titles'])
+                entry['time'] = timestamp
+                info_dialog(self, 'Highlight', str(i), show=True)
+                body['entries'].append(entry)
+
+            url = 'http://%s:8080/send' % prefs['server_ip_addr']
+            print(json.dumps(body))
+            headers = {
+                'Accept': 'application/json, text/plain, */*',
+                'Content-Type': 'application/json;charset=UTF-8',
+            }
+            br = mechanize.Browser()
+            br.set_handle_robots(False)
+            req = mechanize.Request(url=url,
+                                    data=json.dumps(body),
+                                    headers=headers,
+                                    method='POST')
+            from urllib.error import URLError
+            try:
+                resp = br.open(req)
+                print(json.loads(resp.read()))
+            except URLError:
+                return error_dialog(self.gui, '请求发送失败',
+                                    '可能原因:\n• 目标设备IP地址错误\n• 目标设备未进入API导入界面', show=True, show_copy_button=False)
+
 
     def marked(self):
         ''' Show books with only one format '''
@@ -137,12 +191,21 @@ class DemoDialog(QDialog):
             # Ask the view plugin to launch the viewer for row_number
             view_plugin._view_calibre_books([most_recent_id])
 
+    def xmnote_help(self):
+        return info_dialog(self, '帮助',
+                           '若要将Calibre的笔记发送至纸间书摘，请确保纸间书摘的版本在v3.5.6及以上。'
+                           '在开始导出前您需要让运行Calibre的设备与运行纸间书摘的设备处在同一局域网中，'
+                           '然后在纸间书摘中打开「我的」-「书摘导入」-「通过API导入」，您可以在打开的页面底部看到设备的IP。'
+                           '将IP输入至「设置目标设备的IP」一栏中，即可开始执行笔记的导出。',
+                           show=True,
+                           show_copy_button=False
+                           )
+
     def update_metadata(self):
         '''
         Set the metadata in the files in the selected book's record to
         match the current metadata in the database.
         '''
-        from calibre.gui2 import error_dialog, info_dialog
         def export_highlight(self):
             confirm = QMessageBox()
             confirm.setText(
@@ -177,7 +240,7 @@ class DemoDialog(QDialog):
                     show=True)
 
     def get_formatted_label(self):
-        res = '目标设备:\n' + prefs['server_ip_addr'] + ':' + prefs['server_port'] + '\n\n'
+        res = '目标设备IP:\n' + prefs['server_ip_addr'] + '\n\n'
         res += '已选书籍:\n'
         # Get currently selected books
         rows = self.gui.library_view.selectionModel().selectedRows()
@@ -194,7 +257,6 @@ class DemoDialog(QDialog):
         return res + '\n'
 
     def config(self):
-        from calibre.gui2 import error_dialog
         self.do_user_config(parent=self)
         self.label.setText(self.get_formatted_label())
         # Apply the changes
