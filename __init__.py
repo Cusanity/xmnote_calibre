@@ -19,10 +19,10 @@ class InterfacePluginDemo(InterfaceActionBase):
     The reason for having two classes is that it allows the command line
     calibre utilities to run without needing to load the GUI libraries.
     '''
-    name                = 'Interface Plugin Demo'
-    description         = 'An advanced plugin demo'
+    name                = '纸间书摘'
+    description         = ''
     supported_platforms = ['windows', 'osx', 'linux']
-    author              = 'Kovid Goyal'
+    author              = 'Cusanity'
     version             = (1, 0, 0)
     minimum_calibre_version = (0, 7, 53)
 
