@@ -3,7 +3,7 @@
 
 
 __license__   = 'GPL v3'
-__copyright__ = '2011, Kovid Goyal <kovid@kovidgoyal.net>'
+__copyright__ = '2023, Cusanity <wyc935398521@gmail.com>'
 __docformat__ = 'restructuredtext en'
 
 from qt.core import QWidget, QHBoxLayout, QLabel, QLineEdit
@@ -18,23 +18,33 @@ from calibre.utils.config import JSONConfig
 prefs = JSONConfig('plugins/interface_demo')
 
 # Set defaults
-prefs.defaults['hello_world_msg'] = 'Hello, World!'
+prefs.defaults['server_ip_addr'] = '192.168.0.1'
+prefs.defaults['server_port'] = '8080'
 
 
 class ConfigWidget(QWidget):
 
     def __init__(self):
         QWidget.__init__(self)
-        self.l = QHBoxLayout()
-        self.setLayout(self.l)
+        self.popup = QHBoxLayout()
+        self.setLayout(self.popup)
 
-        self.label = QLabel('Hello world &message:')
-        self.l.addWidget(self.label)
+        self.ip_label = QLabel('设备IP地址: ')
+        self.popup.addWidget(self.ip_label)
 
-        self.msg = QLineEdit(self)
-        self.msg.setText(prefs['hello_world_msg'])
-        self.l.addWidget(self.msg)
-        self.label.setBuddy(self.msg)
+        self.ip_edit = QLineEdit(self)
+        self.ip_edit.setText(prefs['server_ip_addr'])
+        self.popup.addWidget(self.ip_edit)
+        self.ip_label.setBuddy(self.ip_edit)
+
+        self.port_label = QLabel('设备端口号: ')
+        self.popup.addWidget(self.port_label)
+
+        self.port_edit = QLineEdit(self)
+        self.port_edit.setText(prefs['server_port'])
+        self.popup.addWidget(self.port_edit)
+        self.port_label.setBuddy(self.port_edit)
 
     def save_settings(self):
-        prefs['hello_world_msg'] = self.msg.text()
+        prefs['server_ip_addr'] = self.ip_edit.text()
+        prefs['server_port'] = self.port_edit.text()

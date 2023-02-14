@@ -2,9 +2,11 @@
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
 
 
-__license__   = 'GPL v3'
-__copyright__ = '2011, Kovid Goyal <kovid@kovidgoyal.net>'
+__license__ = 'GPL v3'
+__copyright__ = '2023, Cusanity <wyc935398521@gmail.com>'
 __docformat__ = 'restructuredtext en'
+
+import re
 
 if False:
     # This is here to keep my python error checker from complaining about
@@ -15,6 +17,19 @@ if False:
 from qt.core import QDialog, QVBoxLayout, QPushButton, QMessageBox, QLabel
 
 from calibre_plugins.interface_demo.config import prefs
+
+
+def is_valid_ipv4(ip_address):
+    compile_ip = re.compile(
+        '^(1\d{2}|2[0-4]\d|25[0-5]|[1-9]\d|[1-9])\.(1\d{2}|2[0-4]\d|25[0-5]|[1-9]\d|\d)\.(1\d{2}|2[0-4]\d|25[0-5]|[1-9]\d|\d)\.(1\d{2}|2[0-4]\d|25[0-5]|[1-9]\d|\d)$')
+    if compile_ip.match(ip_address):
+        return True
+    else:
+        return False
+
+
+def is_valid_port(port_str):
+    return 65535 > int(port_str) > 1023
 
 
 class DemoDialog(QDialog):
@@ -34,10 +49,10 @@ class DemoDialog(QDialog):
         self.l = QVBoxLayout()
         self.setLayout(self.l)
 
-        self.label = QLabel(prefs['hello_world_msg'])
+        self.label = QLabel(self.get_formatted_label())
         self.l.addWidget(self.label)
 
-        self.setWindowTitle('Interface Plugin Demo')
+        self.setWindowTitle('纸间书摘')
         self.setWindowIcon(icon)
 
         self.about_button = QPushButton('About', self)
@@ -60,7 +75,7 @@ class DemoDialog(QDialog):
         self.l.addWidget(self.update_metadata_button)
 
         self.conf_button = QPushButton(
-                'Configure this plugin', self)
+            'Configure this plugin', self)
         self.conf_button.clicked.connect(self.config)
         self.l.addWidget(self.conf_button)
 
@@ -76,9 +91,23 @@ class DemoDialog(QDialog):
         # should pass a list of names to get_resources. In this case,
         # get_resources will return a dictionary mapping names to bytes. Names that
         # are not found in the zip file will not be in the returned dictionary.
+        from calibre.gui2 import error_dialog, info_dialog
         text = get_resources('about.txt')
         QMessageBox.about(self, 'About the Interface Plugin Demo',
-                text.decode('utf-8'))
+                          text.decode('utf-8'))
+        rows = self.gui.library_view.selectionModel().selectedRows()
+        if not rows or len(rows) == 0:
+            return error_dialog(self.gui, 'Cannot update metadata',
+                                'No books selected', show=True)
+        # Map the rows to book ids
+        selected_book_ids = list(map(self.gui.library_view.model().id, rows))
+        # print(ids)
+        info_dialog(self, 'Selected count', str(len(selected_book_ids)), show=True)
+        filtered_list = filter(lambda a: a.get('book_id', {}) in selected_book_ids,
+                               self.gui.current_db.new_api.all_annotations())
+        for i in filtered_list:
+            print(i)
+        print(114515)
 
     def marked(self):
         ''' Show books with only one format '''
@@ -113,42 +142,69 @@ class DemoDialog(QDialog):
         Set the metadata in the files in the selected book's record to
         match the current metadata in the database.
         '''
-        from calibre.ebooks.metadata.meta import set_metadata
         from calibre.gui2 import error_dialog, info_dialog
+        def export_highlight(self):
+            confirm = QMessageBox()
+            confirm.setText(
+                "Are you sure you want to send ALL highlights of the selected books to XMNOTE? This cannot be undone.")
+            confirm.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+            confirm.setIcon(QMessageBox.Question)
+            confirmed = confirm.exec()
+            print(filter(lambda a: a.get("annotation", {}).get("type") == "highlight",
+                         self.gui.current_db.new_api.all_annotations()))
+            if confirmed != QMessageBox.Yes:
+                return
 
         # Get currently selected books
         rows = self.gui.library_view.selectionModel().selectedRows()
         if not rows or len(rows) == 0:
             return error_dialog(self.gui, 'Cannot update metadata',
-                             'No books selected', show=True)
+                                'No books selected', show=True)
         # Map the rows to book ids
+        ids = list(map(self.gui.library_view.model().id, rows))
+        info_dialog(self, 'Selected count', str(len(ids)), show=True)
+        db = self.db.new_api
+        for book_id in ids:
+            # Get the current metadata for this book from the db
+            mi = db.get_metadata(book_id, get_cover=True, cover_as_data=True)
+            fmts = db.formats(book_id)
+            print('book_id: ', book_id)
+            print('mi: ', mi)
+            print('fmts: ', fmts)
+
+        info_dialog(self, 'Updated files',
+                    'Updated the metadata in the files of %d book(s)' % len(ids),
+                    show=True)
+
+    def get_formatted_label(self):
+        res = '目标设备:\n' + prefs['server_ip_addr'] + ':' + prefs['server_port'] + '\n\n'
+        res += '已选书籍:\n'
+        # Get currently selected books
+        rows = self.gui.library_view.selectionModel().selectedRows()
         ids = list(map(self.gui.library_view.model().id, rows))
         db = self.db.new_api
         for book_id in ids:
             # Get the current metadata for this book from the db
             mi = db.get_metadata(book_id, get_cover=True, cover_as_data=True)
             fmts = db.formats(book_id)
-            if not fmts:
-                continue
-            for fmt in fmts:
-                fmt = fmt.lower()
-                # Get a python file object for the format. This will be either
-                # an in memory file or a temporary on disk file
-                ffile = db.format(book_id, fmt, as_file=True)
-                ffile.seek(0)
-                # Set metadata in the format
-                set_metadata(ffile, mi, fmt)
-                ffile.seek(0)
-                # Now replace the file in the calibre library with the updated
-                # file. We dont use add_format_with_hooks as the hooks were
-                # already run when the file was first added to calibre.
-                db.add_format(book_id, fmt, ffile, run_hooks=False)
-
-        info_dialog(self, 'Updated files',
-                'Updated the metadata in the files of %d book(s)'%len(ids),
-                show=True)
+            print('book_id: ', book_id)
+            print('mi: ', mi)
+            print('fmts: ', fmts)
+            res += mi.title + '\n'
+        return res + '\n'
 
     def config(self):
+        from calibre.gui2 import error_dialog
         self.do_user_config(parent=self)
+        self.label.setText(self.get_formatted_label())
         # Apply the changes
-        self.label.setText(prefs['hello_world_msg'])
+        if not is_valid_ipv4(prefs['server_ip_addr']):
+            return error_dialog(self.gui, 'IP地址无效',
+                                'IP地址无效', show=True)
+        try:
+            if not is_valid_port(prefs['server_port']):
+                return error_dialog(self.gui, '端口无效',
+                                    '端口为一个1024 ~ 65535的整数', show=True)
+        except ValueError:
+            return error_dialog(self.gui, '端口格式错误',
+                                '端口为一个1024 ~ 65535的整数', show=True)
